@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ta 跟我开了一个巨大的玩笑</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{overflow:hidden;background:#020208;font-family:system-ui}
+canvas{display:block}
+#musicBtn {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 100;
+    width: 54px;
+    height: 54px;
+    font-size: 24px;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.35);
+    border: 2px solid #39ff99;
+    border-radius: 50%;
+    cursor: pointer;
+    user-select: none;
+    transition: 0.2s;
+}
+#musicBtn:active {
+    background: rgba(57, 255, 153, 0.25);
+    transform: scale(0.96);
+}
+#topTitle {
+    position: fixed;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 99;
+    font-size: 24px;
+    font-weight: 600;
+    color: #87ceff;
+    letter-spacing: 2px;
+    line-height: 1.6;
+    text-align: center;
+    text-shadow:
+        0 0 10px rgba(135, 206, 255, 0.9),
+        0 0 22px rgba(135, 206, 255, 0.55),
+        0 0 40px rgba(135, 206, 255, 0.35);
+    pointer-events: none;
+    animation: titleFloat 3.6s ease-in-out infinite, titleGlow 2.4s ease-in-out infinite;
+}
+@keyframes titleFloat {
+    0%, 100% {
+        transform: translate(-50%, 0);
+    }
+    50% {
+        transform: translate(-50%, -10px);
+    }
+}
+@keyframes titleGlow {
+    0%, 100% {
+        opacity: 0.85;
+        text-shadow:
+            0 0 10px rgba(135, 206, 255, 0.9),
+            0 0 22px rgba(135, 206, 255, 0.55),
+            0 0 40px rgba(135, 206, 255, 0.35);
+    }
+    50% {
+        opacity: 1;
+        text-shadow:
+            0 0 16px rgba(135, 206, 255, 1),
+            0 0 32px rgba(135, 206, 255, 0.7),
+            0 0 60px rgba(135, 206, 255, 0.45);
+    }
+}
+/* 歌词字幕：往上挪两行 */
+#lrcBox{
+    position:fixed;
+    bottom:150px;
+    left:50%;
+    transform:translateX(-50%);
+    z-index:98;
+    color:#b6ffb6;
+    font-size:20px;
+    text-align:center;
+    text-shadow: 0 0 12px #66ff66;
+    pointer-events:none;
+    transition: all 0.4s ease;
+    white-space:nowrap;
+}
+/* 落款：底部居中，距离底部三行 */
+#madeBy{
+    position:fixed;
+    bottom:90px;
+    left:50%;
+    transform:translateX(-50%);
+    z-index:97;
+    color:#ffffff;
+    font-size:15px;
+    letter-spacing:2px;
+    opacity:0.55;
+    text-shadow:0 0 8px rgba(255,255,255,0.35);
+    pointer-events:none;
+}
+@media (max-width: 480px) {
+    #topTitle {
+        font-size: 18px;
+        top: 50px;
+        transform: translateX(-50%);
+        letter-spacing: 1px;
+        line-height: 1.5;
+    }
+    #lrcBox{
+        font-size:16px;
+        bottom:130px;
+        color:#b6ffb6;
+        text-shadow: 0 0 10px #66ff66;
+    }
+    #madeBy{
+        font-size:13px;
+        bottom:70px;
+        opacity:0.5;
+    }
+}
+</style>
+</head>
+<body>
+<div id="topTitle">
+在日复一日和百无聊赖中 我们要选择遵守世界的游戏规则<br>
+但我们不能缺失拿回自己态度的勇气
+</div>
+<div id="lrcBox"></div>
+<div id="madeBy">by 菜芽不菜呀-XXL</div>
+<button id="musicBtn">🎵</button>
+<audio id="bgm0" src="./audio/v1.mp3" loop preload="auto" playsinline webkit-playsinline x5-playsinline>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.127.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.127.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.z = 14;
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+const clock = new THREE.Clock();
+const bgmAudio = document.getElementById('bgm0');
+const musicBtn = document.getElementById('musicBtn');
+const lrcBox = document.getElementById('lrcBox');
+let bgmPlayed = false;
+
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+const meshArr = [];
+
+// ========== 剧场现场字幕，适配v1.mp3 ==========
+const lrcList = [
+    {time:0, text:"那就问大家一个问题"},
+    {time:2, text:"当你们没有希望的时候"},
+    {time:4, text:"当你们焦虑和你们绝望的时候"},
+    {time:5, text:"你们应该做的事情是什么？"},
+    {time:7, text:"看刘萧旭！"},
+    {time:13, text:"那么其实我一开始"},
+    {time:14, text:"并不是出现在你们生活当中的"},
+    {time:15, text:"你们选择了一个你们"},
+    {time:16, text:"并没有原本的生活轨迹"},
+    {time:18, text:"所以你们应该跳出原来的生活轨迹"},
+    {time:20, text:"去看一看"},
+    {time:21, text:"就换个思路去思考问题"},
+    {time:23, text:"这就是勇气"},
+    {time:24, text:"所以说我们要有勇气拿回我们自己的态度"},
+    {time:27, text:"谢谢你圆了我看你演话剧的梦"},
+    {time:29, text:"谢谢你们圆了我自己演话剧的梦"},
+    {time:33, text:"我相信大家很多人有很多都是因为"},
+    {time:34, text:"就是给我面子"},
+    {time:37, text:"然后赏脸能够走进剧场"},
+    {time:39, text:"我觉得我非常感谢大家第一次走进剧场"},
+    {time:42, text:"我非常感谢大家能够第一次走进剧场"},
+];
+let currentLrcIndex = -1;
+
+// 歌词更新函数
+function updateLrc(){
+    const t = bgmAudio.currentTime;
+    let idx = -1;
+    for(let i=0; i<lrcList.length; i++){
+        if(t >= lrcList[i].time) idx = i;
+    }
+    if(idx !== currentLrcIndex){
+        currentLrcIndex = idx;
+        if(idx >=0){
+            lrcBox.innerText = lrcList[idx].text;
+        }else{
+            lrcBox.innerText = "";
+        }
+    }
+}
+bgmAudio.addEventListener('timeupdate', updateLrc);
+// =====================================================
+
+// ===== 高密度绿色星空粒子（数量翻倍）=====
+class StarGroup {
+  constructor(count, size, baseOpacity, driftSpeed, selfRotateSpeed, blinkFreq) {
+    this.count = count;
+    this.driftSpeed = driftSpeed;
+    this.selfRotateSpeed = selfRotateSpeed;
+    this.blinkFreq = blinkFreq;
+    this.baseOpacity = baseOpacity;
+
+    this.geo = new THREE.BufferGeometry();
+    this.posArr = new Float32Array(count * 3);
+    this.curPos = new Float32Array(count * 3);
+    this.phaseOffsets = new Float32Array(count);
+
+    for(let i = 0; i < count * 3; i += 3) {
+      const x = (Math.random() - 0.5) * 40;
+      const y = (Math.random() - 0.5) * 40;
+      const z = (Math.random() - 0.5) * 40;
+      this.posArr[i] = x;
+      this.posArr[i+1] = y;
+      this.posArr[i+2] = z;
+      this.curPos[i] = x;
+      this.curPos[i+1] = y;
+      this.curPos[i+2] = z;
+    }
+    for(let i = 0; i < count; i++){
+      this.phaseOffsets[i] = Math.random() * Math.PI * 2;
+    }
+
+    this.geo.setAttribute('position', new THREE.BufferAttribute(this.posArr, 3));
+    this.mat = new THREE.PointsMaterial({
+      color: 0x39ff99,
+      size: size,
+      transparent: true,
+      opacity: baseOpacity,
+      sizeAttenuation: true,
+      depthWrite: false
+    });
+    this.points = new THREE.Points(this.geo, this.mat);
+    scene.add(this.points);
+  }
+
+  update(delta, time) {
+    const posAttr = this.geo.attributes.position;
+    const arr = this.posArr;
+    const cur = this.curPos;
+
+    for(let i = 0; i < this.count; i++){
+      const idx = i * 3;
+      let x = cur[idx];
+      let y = cur[idx+1];
+      let z = cur[idx+2];
+
+      const rXZ = Math.sqrt(x*x + z*z);
+      const ang = Math.atan2(z, x) + this.selfRotateSpeed * delta;
+      x = Math.cos(ang) * rXZ;
+      z = Math.sin(ang) * rXZ;
+
+      const len = Math.sqrt(x*x + y*y + z*z);
+      if(len > 0.01) {
+        const f = this.driftSpeed * delta;
+        x += (x / len) * f;
+        y += (y / len) * f;
+        z += (z / len) * f;
+      }
+
+      const curLen = Math.sqrt(x*x + y*y + z*z);
+      if(curLen > 45) {
+        cur[idx]   = (Math.random() - 0.5) * 40;
+        cur[idx+1] = (Math.random() - 0.5) * 40;
+        cur[idx+2] = (Math.random() - 0.5) * 40;
+      } else {
+        cur[idx]   = x;
+        cur[idx+1] = y;
+        cur[idx+2] = z;
+      }
+
+      arr[idx]   = cur[idx];
+      arr[idx+1] = cur[idx+1];
+      arr[idx+2] = cur[idx+2];
+    }
+
+    posAttr.needsUpdate = true;
+
+    let s = 0;
+    const freq = this.blinkFreq;
+    for(let i = 0; i < this.count; i++){
+      s += Math.sin(time * freq + this.phaseOffsets[i]);
+    }
+    this.mat.opacity = this.baseOpacity + (s / this.count) * 0.18;
+  }
+}
+
+// 星空：原来500 → 1200
+const starSlow = new StarGroup(1200, 0.05, 0.45, 0.02, 0.08, 0.8);
+const starMid  = new StarGroup(1200, 0.07, 0.65, 0.04, 0.15, 1.4);
+const starFast = new StarGroup(1200, 0.09, 0.85, 0.07, 0.25, 2.2);
+
+// ===== 高密度爱心粒子（数量加多）=====
+class DiffuseHeart {
+  constructor() {
+    this.pts = [];
+    this.initPoints();
+  }
+
+  heartFunc(t, shrink) {
+    const x = 16 * Math.pow(Math.sin(t), 3) * shrink;
+    const y = (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) * shrink;
+    return {x, y};
+  }
+
+  scatterInside(x, y, beta = 0.1) {
+    const rx = -beta * Math.log(Math.random());
+    const ry = -beta * Math.log(Math.random());
+    return {x: x - rx * x, y: y - ry * y};
+  }
+
+  initPoints() {
+    const shrink = 0.10;
+    // 爱心粒子增加
+    for(let i = 0; i < 4500; i++) {
+      const t = Math.random() * Math.PI * 2;
+      const p = this.heartFunc(t, shrink);
+      const np = this.scatterInside(p.x, p.y, 0.08);
+      this.pts.push(np.x, np.y, (Math.random()-0.5)*0.25);
+    }
+    for(let i = 0; i < 5000; i++) {
+      const t = Math.random() * Math.PI * 2;
+      const p = this.heartFunc(t, shrink * 0.85);
+      const np = this.scatterInside(p.x, p.y, 0.06);
+      this.pts.push(np.x, np.y, (Math.random()-0.5)*0.25);
+    }
+  }
+  getBuffer(){
+    return new Float32Array(this.pts);
+  }
+}
+
+const heartIns = new DiffuseHeart();
+const heartGeo = new THREE.BufferGeometry();
+heartGeo.setAttribute('position', new THREE.Float32BufferAttribute(heartIns.getBuffer(), 3));
+const heartMat = new THREE.PointsMaterial({
+  color: 0xff2121,
+  size: 0.10,
+  transparent: true,
+  opacity: 0.95,
+  sizeAttenuation: true,
+  depthWrite: false,
+  depthTest: false
+});
+const heart = new THREE.Points(heartGeo, heartMat);
+heart.visible = true;
+heart.position.z = -2.5;
+scene.add(heart);
+
+// ===== LXX 粒子文字 =====
+const lxxGeometry = new THREE.BufferGeometry();
+const lxxPositions = [];
+const lxxMaterial = new THREE.PointsMaterial({
+  color: 0x39ff99,
+  size: 0.12,
+  transparent: true,
+  opacity: 1,
+  sizeAttenuation: true,
+  depthWrite: false,
+  depthTest: false
+});
+function addLXX(px, py){
+  const step = 0.32 * 0.8;
+  const rows = 7;
+  for(let r = 0; r < rows; r++){
+    lxxPositions.push(px, py - r * step, 0);
+    if(r === rows - 1){
+      for(let c = 1; c < 4; c++){
+        lxxPositions.push(px + c * step, py - r * step, 0);
+      }
+    }
+    lxxPositions.push(px + 1.7 * 0.8 + r * step * 0.4, py - r * step, 0);
+    lxxPositions.push(px + 1.7 * 0.8 - r * step * 0.4 + step * 2, py - r * step, 0);
+    lxxPositions.push(px + 3.6 * 0.8 + r * step * 0.4, py - r * step, 0);
+    lxxPositions.push(px + 3.6 * 0.8 - r * step * 0.4 + step * 2, py - r * step, 0);
+  }
+}
+addLXX(-5.6, 1.0);
+lxxGeometry.setAttribute('position', new THREE.Float32BufferAttribute(lxxPositions, 3));
+const lxxText = new THREE.Points(lxxGeometry, lxxMaterial);
+lxxText.visible = true;
+lxxText.position.z = -3.2;
+scene.add(lxxText);
+
+// ===== XXL 粒子文字 =====
+const xxlGeometry = new THREE.BufferGeometry();
+const xxlPositions = [];
+const xxlMaterial = new THREE.PointsMaterial({
+  color: 0x39ff99,
+  size: 0.12,
+  transparent: true,
+  opacity: 1,
+  sizeAttenuation: true,
+  depthWrite: false,
+  depthTest: false
+});
+function addXXL(px, py){
+  const step = 0.32 * 0.8;
+  const rows = 7;
+  for(let r = 0; r < rows; r++){
+    xxlPositions.push(px + r * step * 0.4, py - r * step, 0);
+    xxlPositions.push(px - r * step * 0.4 + step * 2, py - r * step, 0);
+    xxlPositions.push(px + 1.9 * 0.8 + r * step * 0.4, py - r * step, 0);
+    xxlPositions.push(px + 1.9 * 0.8 - r * step * 0.4 + step * 2, py - r * step, 0);
+    xxlPositions.push(px + 3.2 * 0.8, py - r * step, 0);
+  }
+  xxlPositions.push(px + 3.2 * 0.8, py - 6 * step, 0);
+  xxlPositions.push(px + 3.4 * 0.8, py - 6 * step, 0);
+  xxlPositions.push(px + 3.6 * 0.8, py - 6 * step, 0);
+  xxlPositions.push(px + 3.8 * 0.8, py - 6 * step, 0);
+  xxlPositions.push(px + 4.0 * 0.8, py - 6 * step, 0);
+}
+addXXL(2.6, 1.0);
+xxlGeometry.setAttribute('position', new THREE.Float32BufferAttribute(xxlPositions, 3));
+const xxlText = new THREE.Points(xxlGeometry, xxlMaterial);
+xxlText.visible = true;
+xxlText.position.z = -3.2;
+scene.add(xxlText);
+
+// ===== 照片球体（已修复：照片正面朝外） =====
+const photoGroup = new THREE.Group();
+scene.add(photoGroup);
+const imgList = [
+  "./img/p1.jpg",
+  "./img/p2.jpg",
+  "./img/p3.jpg",
+  "./img/p4.jpg",
+  "./img/p5.jpg",
+  "./img/p6.jpg",
+  "./img/p7.jpg",
+  "./img/p8.jpg",
+  "./img/p9.jpg",
+  "./img/p10.jpg",
+  "./img/p11.jpg",
+  "./img/p12.jpg",
+  "./img/p13.jpg",
+  "./img/p14.jpg",
+  "./img/p15.jpg",
+  "./img/p16.jpg",
+  "./img/p17.jpg",
+  "./img/p18.jpg",
+  "./img/p19.jpg",
+  "./img/p20.jpg",
+  "./img/p21.jpg",
+  "./img/p22.jpg",
+  "./img/p23.jpg",
+  "./img/p24.jpg",
+  "./img/p25.jpg",
+  "./img/p26.jpg",
+  "./img/p27.jpg",
+  "./img/p28.jpg",
+  "./img/p29.jpg",
+  "./img/p30.jpg",
+  "./img/p31.jpg",
+  "./img/p32.jpg",
+  "./img/p33.jpg",
+  "./img/p34.jpg",
+  "./img/p35.jpg",
+  "./img/p36.jpg",
+  "./img/p37.jpg",
+  "./img/p38.jpg",
+  "./img/p39.jpg",
+  "./img/p40.jpg",
+  "./img/p41.jpg",
+  "./img/p42.jpg",
+  "./img/p43.jpg",
+  "./img/p44.jpg",
+  "./img/p45.jpg",
+  "./img/p46.jpg",
+  "./img/p47.jpg",
+  "./img/p48.jpg",
+  "./img/p49.jpg",
+  "./img/p50.jpg",
+  "./img/p51.jpg",
+  "./img/p52.jpg"
+];
+const loader = new THREE.TextureLoader();
+const total = imgList.length;
+
+for(let i = 0; i < total; i++){
+  const theta = Math.PI * (3 - Math.sqrt(5)) * i;
+  const baseR = 10;
+  const r = baseR * (0.92 + Math.random() * 0.08);
+  const rawY = ((i / total) * 2 - 1) * 0.9;
+  const y = rawY * (1 - 0.35) + (Math.random() - 0.5) * 0.18;
+  const rr = Math.sqrt(1 - Math.pow(y / 0.9, 2) * 0.9);
+  const x = Math.cos(theta) * rr * r;
+  const z = Math.sin(theta) * rr * r;
+
+  const geo = new THREE.PlaneGeometry(1.5, 1.5);
+  const tex = loader.load(imgList[i]);
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearFilter;
+  const mat = new THREE.MeshBasicMaterial({
+    map: tex,
+    side: THREE.DoubleSide,
+    transparent: true
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, y, z);
+  // 向外朝向，正面朝外
+  const dir = new THREE.Vector3(x, y, z).normalize();
+  mesh.lookAt(x + dir.x, y + dir.y, z + dir.z);
+  photoGroup.add(mesh);
+  meshArr.push(mesh);
+}
+
+
+// 切换播放/暂停，按钮符号 🎵 ⏸
+musicBtn.onclick = async function () {
+  if (!bgmPlayed) {
+    await bgmAudio.play();
+    bgmPlayed = true;
+    musicBtn.innerText = "⏸";
+  } else {
+    if (!bgmAudio.paused) {
+      bgmAudio.pause();
+      musicBtn.innerText = "🎵";
+    } else {
+      bgmAudio.play();
+      musicBtn.innerText = "⏸";
+    }
+  }
+}
+
+function animate(){
+  requestAnimationFrame(animate);
+  const delta = clock.getDelta();
+  const time = clock.getElapsedTime();
+
+  starSlow.update(delta, time);
+  starMid.update(delta, time);
+  starFast.update(delta, time);
+
+  photoGroup.rotation.y += 0.0008;
+
+  const s = 1 + Math.sin(time * 2.2) * 0.07;
+  heart.scale.set(s, s, s);
+
+  controls.update();
+  renderer.render(scene,camera);
+}
+animate();
+
+window.addEventListener('resize',()=>{
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+})
+</script>
+</body>
+</html>
